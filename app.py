@@ -1,10 +1,8 @@
 import streamlit as st
 import sqlite3
 from sqlite3 import Connection
-import hashlib
 import pandas as pd
 import datetime
-import io
 
 DB_PATH = "hospital.db"
 
@@ -19,15 +17,6 @@ def get_conn() -> Connection:
 def init_db():
     conn = get_conn()
     c = conn.cursor()
-    # users: simple auth
-    c.execute('''
-        CREATE TABLE IF NOT EXISTS users (
-            id INTEGER PRIMARY KEY,
-            username TEXT UNIQUE,
-            password_hash TEXT,
-            role TEXT
-        )
-    ''')
     # doctors
     c.execute('''
         CREATE TABLE IF NOT EXISTS doctors (
@@ -88,31 +77,8 @@ def init_db():
             FOREIGN KEY(patient_id) REFERENCES patients(id)
         )
     ''')
-
-    # create a default admin user if none
-    c.execute("SELECT COUNT(*) FROM users")
-    if c.fetchone()[0] == 0:
-        pw = hash_password("admin123")
-        c.execute("INSERT INTO users (username,password_hash,role) VALUES (?,?,?)", ("admin", pw, "admin"))
     conn.commit()
     conn.close()
-
-
-# ---------- Auth helpers ----------
-
-def hash_password(password: str) -> str:
-    return hashlib.sha256(password.encode('utf-8')).hexdigest()
-
-
-def verify_user(username: str, password: str) -> dict | None:
-    conn = get_conn()
-    c = conn.cursor()
-    c.execute("SELECT * FROM users WHERE username=?", (username,))
-    row = c.fetchone()
-    conn.close()
-    if row and row[2] == hash_password(password):
-        return dict(row)
-    return None
 
 
 # ---------- CRUD helpers ----------
@@ -257,31 +223,9 @@ def get_bills(patient_id=None, status=None):
 st.set_page_config(page_title="Hospital System", layout="wide")
 init_db()
 
-if 'user' not in st.session_state:
-    st.session_state['user'] = None
-
-# Authentication UI
+# Sidebar & Navigation (no authentication)
 with st.sidebar:
     st.title("نظام إدارة المستشفى")
-    if not st.session_state['user']:
-        st.subheader("تسجيل الدخول")
-        username = st.text_input("اسم المستخدم")
-        password = st.text_input("كلمة المرور", type='password')
-        if st.button("دخول"):
-            user = verify_user(username, password)
-            if user:
-                st.session_state['user'] = user
-                st.success(f"تم تسجيل الدخول كـ {username}")
-            else:
-                st.error("اسم المستخدم أو كلمة المرور غير صحيحة")
-        st.markdown("---")
-        st.write("حساب افتراضي: admin / admin123")
-    else:
-        st.write(f"مسجل كـ: **{st.session_state['user']['username']}** ({st.session_state['user']['role']})")
-        if st.button("تسجيل خروج"):
-            st.session_state['user'] = None
-            st.experimental_rerun()
-
     st.markdown("---")
     st.markdown("### تنقل")
     menu = st.radio("", [
@@ -294,11 +238,6 @@ with st.sidebar:
         "Reports",
         "Settings",
     ])
-
-# Require login for everything except Dashboard (optional)
-if not st.session_state['user'] and menu != 'Dashboard':
-    st.warning("الرجاء تسجيل الدخول للوصول لهذه الصفحة.")
-    st.stop()
 
 # Dashboard
 if menu == 'Dashboard':
@@ -510,27 +449,8 @@ elif menu == 'Reports':
 # Settings
 elif menu == 'Settings':
     st.header("الإعدادات")
-    st.subheader("المستخدمون")
-    conn = get_conn()
-    users = run_query("SELECT id,username,role FROM users", fetch=True)
-    st.dataframe(pd.DataFrame(users))
-    st.subheader("إضافة مستخدم جديد")
-    u_name = st.text_input("اسم المستخدم", key='u_name')
-    u_pw = st.text_input("كلمة المرور", type='password', key='u_pw')
-    u_role = st.selectbox("الدور", ["admin", "clerk", "doctor"], key='u_role')
-    if st.button("إضافة مستخدم"):
-        if u_name and u_pw:
-            try:
-                conn = get_conn()
-                conn.execute("INSERT INTO users (username,password_hash,role) VALUES (?,?,?)", (u_name, hash_password(u_pw), u_role))
-                conn.commit()
-                conn.close()
-                st.success("تمت إضافة المستخدم")
-            except sqlite3.IntegrityError:
-                st.error("اسم المستخدم موجود بالفعل")
-        else:
-            st.error("أكمل الحقول")
+    st.markdown("هذه الصفحة مخصصة لإعدادات عامة. بما أن النظام الآن بدون تسجيل دخول، لا توجد إدارة مستخدمين.")
 
 # Footer
 st.markdown("---")
-st.caption("نظام مستشفى مبسط — مبني ببايثون و Streamlit. للتخصيص أو إضافة ميزات متقدمة (مثل رفع الملفات، صور الأشعة، تكامل مع أنظمة خارجية)، أخبرني بما تريد بالضبط.")
+st.caption("نظام مستشفى مبسط — مبني ببايثون و Streamlit. للتخصيص أو إضافة ميزات متقدمة، أخبرني بما تريد بالضبط.")
